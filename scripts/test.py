@@ -34,8 +34,8 @@ def main():
             threading.Thread(target=server.serve_forever, daemon=True).start()
             platform_url = f'http://127.0.0.1:{server.server_port}/{bundle.name}'
         else:
-            platform_url = (ROOT / 'platform/main.roc').as_posix()
-        with tempfile.TemporaryDirectory(prefix='roc-parallel-test-') as directory:
+            platform_url = '../platform/main.roc'
+        with tempfile.TemporaryDirectory(prefix='.test-', dir=ROOT) as directory:
             work = Path(directory)
             shutil.copy2(ROOT / 'tests/ParallelChecks.roc', work)
             for source in [ROOT / 'examples/map.roc', ROOT / 'tests/checks.roc']:

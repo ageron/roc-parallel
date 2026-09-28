@@ -1,7 +1,7 @@
 import Host
 
 Parallel := [].{
-	map! : List(a), { workers : U64, task : a -> b } => Try(List(b), [InvalidWorkerCount, ..])
+	map! : List(a), { workers : U64, task : a -> b } => Try(List(b), [InvalidWorkerCount])
 	map! = |items, { workers, task }| {
 		if workers == 0 {
 			return Err(InvalidWorkerCount)
