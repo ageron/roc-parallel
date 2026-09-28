@@ -1,0 +1,132 @@
+name: Build, test, and release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.1.0); leave empty to only test'
+        type: string
+      roc_nightly:
+        description: 'Optional Roc nightly tag; leave empty for the latest'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: parallel-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.version != '' && 'release' || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.roc_nightly }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ -n "$RELEASE_VERSION" ]]; then
+            [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]] || { echo 'Release from the default branch only'; exit 1; }
+            [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid release version'; exit 1; }
+          fi
+          tag="$REQUESTED_TAG"
+          if [[ -z "$tag" ]]; then
+            tag=$(gh api repos/roc-lang/nightlies/releases/latest --jq .tag_name)
+          fi
+          [[ "$tag" =~ ^nightly-[A-Za-z0-9.-]+$ ]] || { echo 'Invalid nightly tag'; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: toolchain
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: '0.16.0'
+      - name: Install Roc
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROC_TAG: ${{ needs.toolchain.outputs.tag }}
+        run: python scripts/install_roc.py "$ROC_TAG"
+      - name: Check formatting
+        run: |
+          roc fmt --check platform examples tests
+          zig fmt --check platform/*.zig
+          python -m compileall -q scripts
+      - run: python scripts/build.py --all
+      - run: python scripts/bundle.py
+      - name: Cross-link every target
+        run: |
+          for target in arm64mac x64mac arm64musl x64musl arm64mingw x64mingw; do
+            python scripts/test.py --target "$target" --build-only --output-dir "dist/checks/$target"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: platform-bundle
+          path: |
+            dist/*.tar.zst
+            dist/build-info.json
+          if-no-files-found: error
+
+  test:
+    needs: [toolchain, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel, ubuntu-24.04, ubuntu-24.04-arm, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Roc
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROC_TAG: ${{ needs.toolchain.outputs.tag }}
+        run: python scripts/install_roc.py "$ROC_TAG"
+      - uses: actions/download-artifact@v4
+        with:
+          name: platform-bundle
+          path: dist
+      - name: Run through the bundle URL (no Zig required)
+        run: python scripts/test.py --bundle dist/*.tar.zst
+
+  release:
+    if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+    needs: [build, test]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: platform-bundle
+          path: dist
+      - name: Publish tested archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: python scripts/release.py "$RELEASE_VERSION"
