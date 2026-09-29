@@ -19,14 +19,13 @@ Copy a `.tar.zst` URL from this repository's GitHub releases into your app heade
 app [main!] { pf: platform "<release bundle URL>" }
 
 import pf.Parallel
+import pf.Stderr
 
-main! : List(Str) => Try({}, [Exit(I8), ..])
+main! : List(Str) => Try({}, [Exit(I8), ParallelError([InvalidWorkerCount])])
 main! = |_args| {
-    result = Parallel.map!([1.U64, 2, 3], { workers: 2, task: |n| n * 10 })
-    match result {
-        Ok([10, 20, 30]) => Ok({})
-        _ => Err(Exit(1))
-    }
+    result = Parallel.map!([1.U64, 2, 3], { workers: 2, task: |n| n * 10 }) ? ParallelError
+    Stderr.line!(Str.inspect(result))
+    Ok({})
 }
 ```
 
