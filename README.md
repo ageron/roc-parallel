@@ -30,7 +30,9 @@ main! = || {
 }
 ```
 
-Run with `roc --opt=speed app.roc`. Releases include prebuilt hosts for x64 and ARM64 macOS, Linux (static musl), and Windows (MinGW/UCRT). You do not need Zig or Python to use a release. This platform currently requires Roc's LLVM backend (`--opt=speed` or `--opt=size`).
+Run with `roc app.roc`, or use `roc --opt=speed app.roc` for an optimized LLVM build. Releases include prebuilt hosts for x64 and ARM64 macOS, Linux (static musl), and Windows (MinGW/UCRT). You do not need Zig or Python to use a release.
+
+The dev backend passed the example and full ownership/concurrency checks on Apple Silicon macOS with Roc nightly `2026-09-28-9927ba8`. With the older `2026-09-12-220fd47` nightly, the dev-backend example segfaults; use `--opt=speed` with that compiler. Dev-backend support has not yet been verified on the other targets.
 
 Roc's native ABI is evolving. Release notes record the compiler used for testing; compatibility with every nightly is not guaranteed. CI resolves the latest nightly once per run and tests the same compiler across operating systems. An optional workflow input lets maintainers test a particular nightly. There is no compiler-version rejection in the build scripts.
 
@@ -59,7 +61,7 @@ Use `build.py --target x64mingw` for a single cross-build, then `test.py --targe
 
 ## CI and releases
 
-The workflow builds all six targets on macOS and tests the archive on Apple Silicon macOS, Intel macOS, x64 Linux, ARM64 Linux, and x64 Windows. ARM64 Windows is cross-built but not executed. Pull requests, pushes to `main`, and a weekly schedule run the same checks.
+CI uses the LLVM backend (`--opt=speed`). The workflow builds all six targets on macOS and tests the archive on Apple Silicon macOS, Intel macOS, x64 Linux, ARM64 Linux, and x64 Windows. ARM64 Windows is cross-built but not executed. Pull requests, pushes to `main`, and a weekly schedule run the same checks.
 
 To publish, run the **Build, test, and release** workflow from `main` with a new version such as `0.1.0`. Publication waits for every bundle test to pass and creates a GitHub release at the tested commit. Leaving the version empty runs checks without publishing. The release includes the content-addressed archive and a copyable platform URL. Use that exact URL in consuming apps, including Exercism’s `parallel-example.roc`: a fresh CI build can produce a different archive hash from a local build. No GitHub repository or release is created by local scripts.
 
