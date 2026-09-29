@@ -12,7 +12,7 @@ A one-byte marker in each result box keeps its representation nonempty, includin
 
 ## Source tour
 
-- `Parallel.roc` and `Host.roc`: generic Roc wrapper and native boundary.
+- `Parallel.roc`, `Stderr.roc`, and `Host.roc`: public Roc APIs and the native boundary.
 - `host.zig`: scheduling and joining worker threads.
 - `abi.zig`: the pinned compiler's boxed-closure and list representations.
 - `runtime.zig`: thread-safe allocation through libc and allocation accounting.
@@ -25,3 +25,10 @@ Reference counts track owned references, not threads. These borrowed calls do no
 This demonstrates pure computation over Roc-owned data. It does not establish that arbitrary platform resource handles are safe to share between threads. A crash or allocation/thread-creation failure ends the process; there is no cancellation or recovery protocol.
 
 The ABI is compiler-specific, not a stable public C interface. Builds use LLVM (`--opt=speed`), whose callbacks use linker-resolved runtime symbols. When upgrading, recheck the compiler's `src/builtins/erased_callable.zig`, `list.zig`, `utils.zig`, and `src/layout/field_order.zig`, then rerun the ownership checks.
+
+
+## Process entry point
+
+The host skips the executable name and passes the remaining arguments as an owned `List(List(U8))` to a Roc wrapper, which validates each argument with `Str.from_utf8` before calling the app. Windows uses Zig's Unicode command-line iterator; Unix arguments retain their original bytes until validation. Keeping strings on the Roc side avoids duplicating Roc's small-string representation in the host.
+
+The wrapper discards successful values, handles `Exit(I8)`, and formats other errors through `Stderr.line!`. That effect sends an owned byte list to the host, which writes it and releases the reference, including when it is a seamless slice. The host checks its allocation count after the wrapper returns. Diagnostics are opt-in through `ROC_PARALLEL_DIAGNOSTICS=1`.

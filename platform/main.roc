@@ -1,11 +1,11 @@
 platform ""
 	requires {
-		main! : () => U8
+		main! : List(Str) => Try(_a, [Exit(I8), ..])
 	}
-	exposes [Parallel]
+	exposes [Parallel, Stderr]
 	packages {}
 	provides { "roc_main": main_for_host! }
-	hosted { "parallel_run": Host.run! }
+	hosted { "parallel_run": Host.run!, "parallel_stderr": Host.stderr! }
 	targets: {
 		inputs_dir: "targets/",
 		arm64mac: { inputs: ["libhost.a", app] },
@@ -17,6 +17,20 @@ platform ""
 	}
 import Parallel
 import Host
+import Stderr
 
-main_for_host! : () => U8
-main_for_host! = main!
+main_for_host! : List(List(U8)) => I8
+main_for_host! = |raw_args| {
+	args = raw_args.map_try(Str.from_utf8) ?? {
+		Stderr.line!("Command-line arguments must be valid Unicode")
+		return 2
+	}
+	match main!(args) {
+		Ok(_) => 0
+		Err(Exit(code)) => code
+		Err(other) => {
+			Stderr.line!("Program exited with error: ${Str.inspect(other)}")
+			1
+		}
+	}
+}

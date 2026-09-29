@@ -20,12 +20,12 @@ app [main!] { pf: platform "<release bundle URL>" }
 
 import pf.Parallel
 
-main! : () => U8
-main! = || {
+main! : List(Str) => Try({}, [Exit(I8), ..])
+main! = |_args| {
     result = Parallel.map!([1.U64, 2, 3], { workers: 2, task: |n| n * 10 })
     match result {
-        Ok([10, 20, 30]) => 0
-        _ => 1
+        Ok([10, 20, 30]) => Ok({})
+        _ => Err(Exit(1))
     }
 }
 ```
@@ -35,6 +35,16 @@ Run with `roc app.roc`, or use `roc --opt=speed app.roc` for an optimized LLVM b
 The dev backend passed the example and full ownership/concurrency checks on Apple Silicon macOS with Roc nightly `2026-09-28-9927ba8`. With the older `2026-09-12-220fd47` nightly, the dev-backend example segfaults; use `--opt=speed` with that compiler. Dev-backend support has not yet been verified on the other targets.
 
 Roc's native ABI is evolving. Release notes record the compiler used for testing; compatibility with every nightly is not guaranteed. CI resolves the latest nightly once per run and tests the same compiler across operating systems. An optional workflow input lets maintainers test a particular nightly. There is no compiler-version rejection in the build scripts.
+
+## Arguments and program results
+
+Apps provide `main! : List(Str) => Try(_a, [Exit(I8), ..])`. Arguments contain only user-supplied arguments; the executable name is omitted. Windows arguments are read from the Unicode command line. Arguments that cannot be represented as valid UTF-8 are rejected with a message and exit status 2.
+
+`Ok(value)` releases the value and exits successfully. `Err(Exit(code))` exits with the requested signed 8-bit code, without printing an error. Other errors are printed to stderr using `Str.inspect` and exit with status 1. On Unix, negative exit codes wrap to the low eight bits (`Exit(-1)` becomes 255); use nonnegative codes for portable conventions.
+
+Import `pf.Stderr` and call `Stderr.line!(message)` for best-effort diagnostic output. For example, a test app can collect the errors returned by its test functions, print all failures and a summary, then return `Err(Exit(1))`. Ordinary runtime crashes still exit with status 2.
+
+Host allocation checks run on every normal return. Set `ROC_PARALLEL_DIAGNOSTICS=1` to also print allocation and peak-concurrency diagnostics; ordinary successful programs are silent.
 
 ## Build and test
 
@@ -55,7 +65,7 @@ python3 scripts/bundle.py
 python3 scripts/test.py --bundle dist/<hash>.tar.zst
 ```
 
-The bundle test serves the archive locally and compiles the examples through its URL, exercising the same package-loading path as a published release. It checks captures, returned closures, sliced lists, empty inputs, errors, ordering, and wide and zero-sized values. The host checks that all Roc allocations are released at process exit.
+The bundle test serves the archive locally and compiles the examples through its URL, exercising the same package-loading path as a published release. It checks captures, returned closures, sliced lists, empty inputs, errors, ordering, wide and zero-sized values, command-line arguments, returned errors, and exit codes. The host checks that all Roc allocations are released at process exit.
 
 Use `build.py --target x64mingw` for a single cross-build, then `test.py --target x64mingw --build-only --output-dir dist/windows` to produce test executables without running them.
 
@@ -67,7 +77,7 @@ To publish, run the **Build, test, and release** workflow from `main` with a new
 
 ## How it works
 
-Each call starts up to `min(workers, items.len(), 64)` threads and joins them before returning. There is no persistent thread pool, cancellation, or I/O API. Allocation or thread-creation failures terminate the process.
+Each call starts up to `min(workers, items.len(), 64)` threads and joins them before returning. There is no persistent thread pool or cancellation. Allocation or thread-creation failures terminate the process.
 
 Compiled Roc functions can run on multiple OS threads without a separate runtime instance per worker. The host must preserve ownership counts; Roc uses atomic reference counts for values that can reach the host. See [the implementation and ownership contract](docs/implementation.md) for a walkthrough of the small host and its ABI assumptions.
 

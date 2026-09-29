@@ -7,7 +7,20 @@ extern fn roc_dealloc(*anyopaque, usize) void;
 
 // Every result is a nonempty Box({ value: a, marker: U8 }).
 // The marker prevents zero-sized boxes/lists; Zig need not know a's layout.
-pub const BoxList = extern struct { ptr: ?[*]?*anyopaque, len: usize, capacity: usize };
+pub fn List(comptime T: type) type {
+    return extern struct {
+        ptr: ?[*]T,
+        len: usize,
+        capacity: usize,
+
+        pub fn slice(self: @This()) []T {
+            return if (self.ptr) |ptr| ptr[0..self.len] else &.{};
+        }
+    };
+}
+pub const BoxList = List(?*anyopaque);
+pub const Bytes = List(u8);
+pub const Arguments = List(Bytes);
 pub const Closure = extern struct {
     call: *const fn (?*anyopaque, ?*anyopaque, ?*const anyopaque, ?*anyopaque, ?*anyopaque, *?*const anyopaque) callconv(.c) void,
     drop: ?*const fn (?*anyopaque, ?*anyopaque) callconv(.c) void,
@@ -41,14 +54,36 @@ pub fn release(task: *Closure) void {
     }
 }
 
-pub fn allocateResults(count: usize) BoxList {
-    const header_bytes = 2 * @sizeOf(usize);
-    const data_bytes = std.math.mul(usize, count, @sizeOf(?*anyopaque)) catch runtime.fail("Too many results");
-    const size = std.math.add(usize, header_bytes, data_bytes) catch runtime.fail("Too many results");
+fn allocateList(comptime T: type, count: usize, comptime children_refcounted: bool) List(T) {
+    if (count == 0) return .{ .ptr = null, .len = 0, .capacity = 0 };
+    const header_bytes = (if (children_refcounted) @as(usize, 2) else 1) * @sizeOf(usize);
+    const data_bytes = std.math.mul(usize, count, @sizeOf(T)) catch runtime.fail("Too many list elements");
+    const size = std.math.add(usize, header_bytes, data_bytes) catch runtime.fail("Too many list elements");
     const base: [*]usize = @ptrCast(@alignCast(roc_alloc(size, @alignOf(usize)).?));
-    base[0] = count; // Allocation element count: elements themselves are refcounted.
-    base[1] = 1; // List reference count.
-    return .{ .ptr = @ptrCast(base + 2), .len = count, .capacity = count << 1 };
+    if (children_refcounted) base[0] = count;
+    base[header_bytes / @sizeOf(usize) - 1] = 1;
+    return .{ .ptr = @ptrCast(base + header_bytes / @sizeOf(usize)), .len = count, .capacity = count << 1 };
+}
+
+pub fn allocateResults(count: usize) BoxList {
+    return allocateList(?*anyopaque, count, true);
+}
+
+pub fn arguments(values: []const []const u8) Arguments {
+    const result = allocateList(Bytes, values.len, true);
+    for (values, result.slice()) |value, *slot| {
+        slot.* = allocateList(u8, value.len, false);
+        @memcpy(slot.slice(), value);
+    }
+    return result;
+}
+
+pub fn releaseBytes(bytes: Bytes) void {
+    if (bytes.ptr == null) return;
+    const allocation = if (bytes.capacity & 1 != 0) bytes.capacity & ~@as(usize, 1) else @intFromPtr(bytes.ptr.?);
+    const rc: *isize = @ptrFromInt(allocation - @sizeOf(usize));
+    if (@atomicLoad(isize, rc, .acquire) == 0) return;
+    if (@atomicRmw(isize, rc, .Sub, 1, .acq_rel) == 1) roc_dealloc(@ptrCast(rc), @alignOf(usize));
 }
 
 comptime {
