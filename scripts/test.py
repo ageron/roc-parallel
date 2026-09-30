@@ -70,7 +70,8 @@ def main():
         with tempfile.TemporaryDirectory(prefix='.test-', dir=ROOT) as directory:
             work = Path(directory)
             shutil.copy2(ROOT / 'tests/ParallelChecks.roc', work)
-            for source in [ROOT / 'examples/map.roc', ROOT / 'tests/checks.roc', ROOT / 'tests/cli.roc']:
+            shutil.copy2(ROOT / 'tests/StatefulChecks.roc', work)
+            for source in [ROOT / 'examples/map.roc', ROOT / 'examples/stateful.roc', ROOT / 'tests/checks.roc', ROOT / 'tests/cli.roc']:
                 app = work / source.name
                 app.write_text(source.read_text().replace('../platform/main.roc', platform_url))
                 executable = work / (source.stem + ('.exe' if args.target.endswith('mingw') else ''))

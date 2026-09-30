@@ -2,10 +2,10 @@ platform ""
 	requires {
 		main! : List(Str) => Try(_a, [Exit(I8), ..])
 	}
-	exposes [Parallel, Stderr]
+	exposes [Parallel, Stateful, Stderr]
 	packages {}
 	provides { "roc_main": main_for_host! }
-	hosted { "parallel_run": Host.run!, "parallel_stderr": Host.stderr! }
+	hosted { "parallel_run": Host.run!, "parallel_stderr": Host.stderr!, "stateful_run": Host.stateful! }
 	targets: {
 		inputs_dir: "targets/",
 		arm64mac: { inputs: ["libhost.a", app] },
@@ -16,6 +16,7 @@ platform ""
 		arm64mingw: { inputs: ["crt2.obj", "host.lib", app, "libmingw32.lib", "zigc.lib", "compiler_rt.lib", "api-ms-win-crt-conio-l1-1-0.lib", "api-ms-win-crt-convert-l1-1-0.lib", "api-ms-win-crt-environment-l1-1-0.lib", "api-ms-win-crt-filesystem-l1-1-0.lib", "api-ms-win-crt-heap-l1-1-0.lib", "api-ms-win-crt-locale-l1-1-0.lib", "api-ms-win-crt-math-l1-1-0.lib", "api-ms-win-crt-multibyte-l1-1-0.lib", "api-ms-win-crt-private-l1-1-0.lib", "api-ms-win-crt-process-l1-1-0.lib", "api-ms-win-crt-runtime-l1-1-0.lib", "api-ms-win-crt-stdio-l1-1-0.lib", "api-ms-win-crt-string-l1-1-0.lib", "api-ms-win-crt-time-l1-1-0.lib", "api-ms-win-crt-utility-l1-1-0.lib", "advapi32.lib", "kernel32.lib", "ntdll.lib", "shell32.lib", "user32.lib"] },
 	}
 import Parallel
+import Stateful
 import Host
 import Stderr
 

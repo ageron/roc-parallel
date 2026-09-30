@@ -43,6 +43,10 @@ def main():
     targets = list(TARGETS) if args.all else [args.target or native_target()]
     if None in targets:
         parser.error('Unsupported host; choose --target explicitly.')
+    # This test uses a rendezvous in the real scheduler to prove that different
+    # states overlap. A global-lock regression must fail instead of hanging CI.
+    subprocess.run(['zig', 'test', str(ROOT / 'platform/stateful.zig'), '-lc'],
+                   check=True, timeout=60)
     for target in targets:
         build(target)
 

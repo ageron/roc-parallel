@@ -2,6 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const abi = @import("abi.zig");
 const runtime = @import("runtime.zig");
+const stateful = @import("stateful.zig");
 
 extern fn roc_main(abi.Arguments) callconv(.c) i8;
 extern "c" fn getenv([*:0]const u8) ?[*:0]const u8;
@@ -55,6 +56,10 @@ export fn parallel_stderr(bytes: abi.Bytes) void {
     std.debug.print("{s}", .{bytes.slice()});
 }
 
+export fn stateful_run(request: stateful.Request) stateful.Result {
+    return stateful.run(request);
+}
+
 export fn main(argc: c_int, argv: [*][*:0]const u8) c_int {
     const allocator = std.heap.c_allocator;
     const args: std.process.Args = if (builtin.os.tag == .windows)
@@ -72,7 +77,7 @@ export fn main(argc: c_int, argv: [*][*:0]const u8) c_int {
     if (runtime.live_allocations.load(.acquire) != 0) runtime.fail("Roc allocations were not all released");
     if (getenv("ROC_PARALLEL_DIAGNOSTICS")) |value| {
         if (std.mem.eql(u8, std.mem.span(value), "1"))
-            std.debug.print("Peak concurrent calls: {d}; all Roc allocations released.\n", .{peak_calls.load(.acquire)});
+            std.debug.print("Peak concurrent calls: {d}; all Roc allocations released.\n", .{@max(peak_calls.load(.acquire), stateful.peak_calls.load(.acquire))});
     }
     return status;
 }

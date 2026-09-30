@@ -36,12 +36,15 @@ fn capture(task: *Closure) *anyopaque {
 }
 
 pub fn invoke(task: *Closure, index: u64) ?*anyopaque {
-    var argument = index;
-    var result: ?*anyopaque = null;
+    return invokeWith(?*anyopaque, task, &index);
+}
+
+pub fn invokeWith(comptime Result: type, task: *Closure, argument: *const anyopaque) Result {
+    var result: Result = undefined;
     var descriptor: ?*const anyopaque = null;
     // LLVM output uses linker-resolved runtime symbols, not a RocOps table.
     // Null reuse borrows the closure; ownership stays with parallel_run.
-    task.call(null, @ptrCast(&result), &argument, capture(task), null, &descriptor);
+    task.call(null, @ptrCast(&result), argument, capture(task), null, &descriptor);
     return result;
 }
 
@@ -79,6 +82,11 @@ pub fn arguments(values: []const []const u8) Arguments {
 }
 
 pub fn releaseBytes(bytes: Bytes) void {
+    releasePlain(u8, bytes);
+}
+
+// Only for lists whose elements do not own references (bytes or indices).
+pub fn releasePlain(comptime T: type, bytes: List(T)) void {
     if (bytes.ptr == null) return;
     const allocation = if (bytes.capacity & 1 != 0) bytes.capacity & ~@as(usize, 1) else @intFromPtr(bytes.ptr.?);
     const rc: *isize = @ptrFromInt(allocation - @sizeOf(usize));

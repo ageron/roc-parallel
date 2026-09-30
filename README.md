@@ -1,6 +1,6 @@
 # roc-parallel
 
-A small Roc platform that runs pure closures on native Zig worker threads.
+A small Roc platform that runs pure closures on native Zig worker threads, including atomic transitions on shared state.
 
 ```roc
 results = Parallel.map!([1.U64, 2, 3], {
@@ -34,6 +34,59 @@ Run with `roc app.roc`, or use `roc --opt=speed app.roc` for an optimized LLVM b
 The dev backend passed the example and full ownership/concurrency checks on Apple Silicon macOS with Roc nightly `2026-09-28-9927ba8`. With the older `2026-09-12-220fd47` nightly, the dev-backend example segfaults; use `--opt=speed` with that compiler. Dev-backend support has not yet been verified on the other targets.
 
 Roc's native ABI is evolving. Release notes record the compiler used for testing; compatibility with every nightly is not guaranteed. CI resolves the latest nightly once per run and tests the same compiler across operating systems. An optional workflow input lets maintainers test a particular nightly. There is no compiler-version rejection in the build scripts.
+
+## Stateful workers
+
+`Stateful.run!` lets concurrent clients send commands to shared states. A state
+has a separate queue; its handler runs atomically, while different states can
+execute in parallel. Import `pf.Stateful` and provide a pure handler:
+
+```roc
+client_commands = [
+    [{ state_index: 0, command: Add(5) }, { state_index: 1, command: Add(10) }],
+    [{ state_index: 0, command: Add(7) }],
+]
+result = client_commands |> Stateful.run!({
+    initial_states: [0.U64, 100],
+    num_workers: 2,
+    handler: |state, command| match command {
+        Add(amount) => {
+            updated = state + amount
+            { state: updated, reply: updated }
+        }
+    },
+})?
+# result.states == [12, 110]
+```
+
+Each inner list in `client_commands` is one client's commands, executed in order.
+`state_index` indexes `initial_states`; `num_workers` is the maximum number of
+native client threads (capped at 64). Cross-client order is unspecified. Replies preserve their input
+client/message positions even when execution order differs.
+
+The handler receives the current state and one command, and returns its next
+state and a reply. An application error can be represented by a `Try` reply:
+return the original state alongside `Err(...)` to reject an update. The platform
+does not interpret replies or roll back state automatically. Reads and lifecycle
+commands must go through the same handler to participate in serialization.
+
+All inputs are validated before any handler runs. Zero threads returns
+`Err(InvalidWorkerCount)`; an out-of-range destination returns
+`Err(InvalidStateIndex(index))`. Empty clients and states are supported. The call
+waits for every client and returns `{ states, replies }`. Continue a session by
+using those states as `initial_states` in another call. Input values remain
+immutable.
+
+This is a bounded, in-memory session, not a persistent service. Clients and
+messages are supplied before it starts. Handlers must terminate; there is no
+cancellation, persistence, networking, or transaction spanning several states.
+Per-state ticket queues currently wait by yielding the OS thread, so this small
+runtime is intended for short transitions. The pool schedules whole clients;
+a busy account can occupy client threads until its queued transitions finish.
+
+See [the runnable counter example](examples/stateful.roc). The bank-account
+exercise uses this API to keep account rules in Roc and synchronization in the
+platform.
 
 ## Arguments and program results
 
@@ -76,7 +129,7 @@ To publish, run the **Build, test, and release** workflow from `main` with a new
 
 ## How it works
 
-Each call starts up to `min(workers, items.len(), 64)` threads and joins them before returning. There is no persistent thread pool or cancellation. Allocation or thread-creation failures terminate the process.
+Each `Parallel.map!` call starts up to `min(workers, items.len(), 64)` threads and joins them before returning. There is no persistent thread pool or cancellation. Allocation or thread-creation failures terminate the process.
 
 Compiled Roc functions can run on multiple OS threads without a separate runtime instance per worker. The host must preserve ownership counts; Roc uses atomic reference counts for values that can reach the host. See [the implementation and ownership contract](docs/implementation.md) for a walkthrough of the small host and its ABI assumptions.
 

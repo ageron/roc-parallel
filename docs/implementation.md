@@ -32,3 +32,35 @@ The ABI is compiler-specific, not a stable public C interface. Builds use LLVM (
 The host skips the executable name and passes the remaining arguments as an owned `List(List(U8))` to a Roc wrapper, which validates each argument with `Str.from_utf8` before calling the app. Windows uses Zig's Unicode command-line iterator; Unix arguments retain their original bytes until validation. Keeping strings on the Roc side avoids duplicating Roc's small-string representation in the host.
 
 The wrapper discards successful values, handles `Exit(I8)`, and formats other errors through `Stderr.line!`. That effect sends an owned byte list to the host, which writes it and releases the reference, including when it is a seamless slice. The host checks its allocation count after the wrapper returns. Diagnostics are opt-in through `ROC_PARALLEL_DIAGNOSTICS=1`.
+
+## Stateful sessions
+
+`client_commands |> Stateful.run!({ initial_states, num_workers, handler })`
+flattens client messages and validates every `state_index` against `initial_states`. It
+passes two boxed closures to Zig: one initializes a boxed state by index; the
+other takes a message index and the owned current-state box, returning two owned
+boxes for the replacement state and reply. Each box contains a one-byte marker
+so zero-sized Roc values also have an allocation-compatible representation.
+
+Native threads claim whole clients, preserving each client's command order.
+Each state has a ticket queue. A thread acquires its ticket before reading the
+state slot, calls the handler, stores the returned state and reply, then releases
+the ticket. Separate states never share a queue. This serializes validation with
+mutation, including error replies and read-only commands. It does not make
+multi-state transactions atomic.
+
+The host allocates the output lists; it never mutates a borrowed Roc input list.
+Every state box has one owned reference in its slot, transferred to the handler
+and replaced by the returned reference. The step closure is borrowed concurrently
+just like the parallel-map closure. Once all threads join, both closures and the
+owned primitive input lists are released; Roc receives the output lists and
+performs typed cleanup of their boxes. The wrapper reconstructs per-client reply
+lists from the original offsets.
+
+`platform/stateful.zig` contains a native scheduler test with a rendezvous inside
+two independent transitions. A single global lock would time out. It also checks
+that contending clients never enter the same state concurrently. Host builds run
+this test with a timeout. `tests/StatefulChecks.roc` covers atomic replies, client
+ordering, routing, continuation, validation, sliced/shared heap values, returned
+closures, wide/empty values, and cleanup through the real Roc ABI. These checks
+also run through release bundles on every tested platform.
