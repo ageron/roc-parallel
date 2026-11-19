@@ -1,4 +1,4 @@
-// The 64-bit boxed-callable and list ABI in Roc 220fd47.
+// The 64-bit boxed-callable and list ABI in Roc a520eed (2026-11-18).
 // See src/builtins/{erased_callable,list,utils}.zig in that compiler revision.
 const std = @import("std");
 const runtime = @import("runtime.zig");
@@ -24,6 +24,10 @@ pub const Arguments = List(Bytes);
 pub const Closure = extern struct {
     call: *const fn (?*anyopaque, ?*anyopaque, ?*const anyopaque, ?*anyopaque, ?*anyopaque, *?*const anyopaque) callconv(.c) void,
     drop: ?*const fn (?*anyopaque, ?*anyopaque) callconv(.c) void,
+    // Added in Roc c0e52d99f9. These fields precede the inline captures even
+    // though the host only needs call and drop when borrowing a closure.
+    copy: ?*const fn (?*anyopaque, isize) callconv(.c) void = null,
+    capture_size: usize = 0,
 };
 // Roc sorts U64 fields alphabetically before pointer fields.
 pub const Request = extern struct { item_count: u64, workers: u64, task: *Closure };

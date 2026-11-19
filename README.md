@@ -35,6 +35,10 @@ The dev backend passed the example and full ownership/concurrency checks on Appl
 
 Roc's native ABI is evolving. Release notes record the compiler used for testing; compatibility with every nightly is not guaranteed. CI resolves the latest nightly once per run and tests the same compiler across operating systems. An optional workflow input lets maintainers test a particular nightly. There is no compiler-version rejection in the build scripts.
 
+The current host uses the four-field boxed-closure header tested with Roc nightly
+`2026-11-18-a520eed`. Older compilers using the two-field header (before Roc
+commit `c0e52d99f9`) require an older platform release.
+
 ## Stateful workers
 
 `Stateful.run!` lets concurrent clients send commands to shared states. A state

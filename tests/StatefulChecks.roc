@@ -68,6 +68,7 @@ StatefulChecks :: {}.{
 add : U64, U64 -> { state : U64, reply : U64 }
 add = |state, amount| { state: state + amount, reply: state + amount }
 
+require : Bool, Str -> Try({}, [AssertionFailed(Str)])
 require = |condition, message| if condition {
 	Ok({})
 } else {

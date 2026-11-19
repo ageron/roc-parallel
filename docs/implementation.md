@@ -18,7 +18,13 @@ A one-byte marker in each result box keeps its representation nonempty, includin
 - `runtime.zig`: thread-safe allocation through libc and allocation accounting.
 - `tests/ParallelChecks.roc`: shared captures, sliced lists, returned closures, empty inputs, errors, and result-order checks.
 
-The host owns one reference to the closure and lends it to workers by passing `null` for the boxed-callable ABI's `reuse` argument. This explicitly borrows the closure without transferring ownership. The host keeps it alive until every worker has joined, then releases its reference once. Roc's generated code manages references to captured values. See the pinned compiler's [boxed-callable ownership contract](https://github.com/roc-lang/roc/blob/220fd47/src/builtins/erased_callable.zig).
+The host owns one reference to the closure and lends it to workers by passing `null` for the boxed-callable ABI's `reuse` argument. This explicitly borrows the closure without transferring ownership. The host keeps it alive until every worker has joined, then releases its reference once. Roc's generated code manages references to captured values. See the tested compiler's [boxed-callable ownership contract](https://github.com/roc-lang/roc/blob/a520eed/src/builtins/erased_callable.zig).
+
+The header contains call, drop, and copy callbacks followed by the capture size.
+On 64-bit targets it occupies 32 bytes; the inline captures start immediately
+after it, aligned to 16 bytes. Roc commit `c0e52d99f9` added the last two fields.
+Using the former 16-byte capture offset passes header bytes as captured values
+and can crash even with a single worker.
 
 Reference counts track owned references, not threads. These borrowed calls do not require an extra closure reference per worker. A host that instead hands each worker an owned reference must retain each one before handing it over. Atomic reference counting makes concurrent count updates safe; it cannot compensate for missing ownership references. Results transfer back to Roc for typed cleanup. The example checks that all runtime allocations are released and reports the peak number of overlapping calls.
 
