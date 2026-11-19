@@ -35,7 +35,10 @@ def install_runtime(work, output, target):
         raise RuntimeError('Could not find Zig 0.16.0 cache directory.')
     # Zig env emits ZON byte escapes (including \xNN for UTF-8 paths).
     cache = Path(ast.literal_eval("b" + cache_match.group(1)).decode("utf-8"))
-    command = ['zig', 'build-exe', str(probe), '-target', TARGETS[target], '-lc', '-O', 'ReleaseSafe',
+    # The probe also selects how Zig builds libc and the other runtime archives.
+    # Match the PIC host libraries used by Roc's Linux PIE linker.
+    pic_flags = ['-fPIC'] if target.endswith('musl') else []
+    command = ['zig', 'build-exe', str(probe), '-target', TARGETS[target], *pic_flags, '-lc', '-O', 'ReleaseSafe',
                f'-femit-bin={work / "runtime-probe.exe"}', '--global-cache-dir', str(cache), '--verbose-link']
     result = subprocess.run(command, encoding="utf-8", capture_output=True)
     if result.returncode:

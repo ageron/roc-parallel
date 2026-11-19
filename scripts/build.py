@@ -16,8 +16,10 @@ def build(target):
     with tempfile.TemporaryDirectory(prefix='roc-parallel-build-') as directory:
         runtime_files = install_runtime(Path(directory), output, target)
     host = 'host.lib' if target.endswith('mingw') else 'libhost.a'
+    # Roc links Linux executables as PIE; every native input must support it.
+    pic_flags = ['-fPIC'] if target.endswith('musl') else []
     subprocess.run(['zig', 'build-lib', str(ROOT / 'platform/host.zig'),
-                    '-target', TARGETS[target], '-lc', '-O', 'ReleaseSafe', '-fcompiler-rt',
+                    '-target', TARGETS[target], *pic_flags, '-lc', '-O', 'ReleaseSafe', '-fcompiler-rt',
                     f'-femit-bin={output / host}'], check=True)
     before = [name for name in runtime_files if name.endswith(('.o', '.obj'))]
     after = [name for name in runtime_files if name not in before]
