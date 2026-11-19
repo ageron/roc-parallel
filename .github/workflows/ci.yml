@@ -54,8 +54,8 @@ jobs:
     needs: toolchain
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
@@ -78,7 +78,7 @@ jobs:
           for target in arm64mac x64mac arm64musl x64musl arm64mingw x64mingw; do
             python scripts/test.py --target "$target" --build-only --output-dir "dist/checks/$target"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: platform-bundle
           path: |
@@ -94,8 +94,8 @@ jobs:
         os: [macos-15, macos-15-intel, ubuntu-24.04, ubuntu-24.04-arm, windows-2025]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Install Roc
@@ -103,7 +103,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ROC_TAG: ${{ needs.toolchain.outputs.tag }}
         run: python scripts/install_roc.py "$ROC_TAG"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: platform-bundle
           path: dist
@@ -117,11 +117,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: platform-bundle
           path: dist
