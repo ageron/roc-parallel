@@ -36,9 +36,10 @@ def install_runtime(work, output, target):
     # Zig env emits ZON byte escapes (including \xNN for UTF-8 paths).
     cache = Path(ast.literal_eval("b" + cache_match.group(1)).decode("utf-8"))
     # The probe also selects how Zig builds libc and the other runtime archives.
-    # Match the PIC host libraries used by Roc's Linux PIE linker.
-    pic_flags = ['-fPIC'] if target.endswith('musl') else []
-    command = ['zig', 'build-exe', str(probe), '-target', TARGETS[target], *pic_flags, '-lc', '-O', 'ReleaseSafe',
+    # Match Roc's static PIE linker, including musl's self-relocating rcrt1.o.
+    # PIC alone selects crt1.o, which links but cannot relocate a static PIE.
+    link_flags = ['-fPIC', '-fPIE', '-static'] if target.endswith('musl') else []
+    command = ['zig', 'build-exe', str(probe), '-target', TARGETS[target], *link_flags, '-lc', '-O', 'ReleaseSafe',
                f'-femit-bin={work / "runtime-probe.exe"}', '--global-cache-dir', str(cache), '--verbose-link']
     result = subprocess.run(command, encoding="utf-8", capture_output=True)
     if result.returncode:
